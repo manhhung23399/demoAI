@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="http://bax.testing/digital-worker">
+  <!--
+    Quy trinh executable cho Digital Worker.
+    Python API khoi tao quy trinh nay bang process key emailDigitalWorker va truyen bien workerRequestBody.
+    File BPMN chi dieu phoi cac buoc; phan loai email, AI, tinh gia va tao file nam trong Python.
+  -->
+  <process id="emailDigitalWorker" name="Email Digital Worker" isExecutable="true">
+    <!-- Diem bat dau cua moi process instance. PAD khong goi truc tiep event nay;
+         Python API yeu cau Flowable tao instance va truyen du lieu email vao bien quy trinh. -->
+    <startEvent id="start" name="Email received" />
+
+    <!-- Noi event bat dau voi service task goi Python worker. -->
+    <sequenceFlow id="flowStartToWorker" sourceRef="start" targetRef="callWorker" />
+
+    <!-- Goi Python API dong bo qua HTTP. Container Flowable dung host.docker.internal
+         de truy cap Python dang chay tren may host tai cong 8000. -->
+    <serviceTask id="callWorker" name="Call Python / LangGraph worker" flowable:type="http">
+      <extensionElements>
+        <!-- Gui request bang POST. -->
+        <flowable:field name="requestMethod" stringValue="POST" />
+
+        <!-- Endpoint Python tiep nhan email va chay xu ly LangGraph. -->
+        <flowable:field name="requestUrl" stringValue="http://host.docker.internal:8000/process-email" />
+
+        <!-- Khai bao noi dung request va kieu response mong doi la JSON. -->
+        <flowable:field name="requestHeaders" stringValue="Content-Type: application/json&#10;Accept: application/json" />
+
+        <!-- Gui nguyen chuoi JSON da duoc Python API dat trong process variable workerRequestBody.
+             Chuoi nay gom sender_email, subject va body cua email. -->
+        <flowable:field name="requestBody">
+          <flowable:expression><![CDATA[${workerRequestBody}]]></flowable:expression>
+        </flowable:field>
+
+        <!-- Doi toi da 120 giay cho Python va AI xu ly request. -->
+        <flowable:field name="requestTimeout" stringValue="120000" />
+
+        <!-- Coi phan hoi HTTP 4xx hoac 5xx la loi de process khong ket thuc nhu thanh cong. -->
+        <flowable:field name="failStatusCodes" stringValue="4XX,5XX" />
+
+        <!-- Luu cac bien response tu Python voi tien to worker. -->
+        <flowable:field name="resultVariablePrefix" stringValue="worker" />
+      </extensionElements>
+    </serviceTask>
+
+    <!-- Neu loi khong xay ra, chuyen tu HTTP service task den su kien ket thuc. -->
+    <sequenceFlow id="flowWorkerToEnd" sourceRef="callWorker" targetRef="end" />
+
+    <!-- Ket thuc process instance sau khi Python tra response thanh cong. -->
+    <endEvent id="end" name="Completed" />
+  </process>
+</definitions>
